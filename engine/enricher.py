@@ -62,9 +62,57 @@ FIRECRAWL_BIN = os.getenv("FIRECRAWL_BIN", "firecrawl")
 FIRECRAWL_KEY = os.getenv("FIRECRAWL_API_KEY", "")
 
 
+def _safe_url(url: str) -> bool:
+    """Reject anything that isn't a plain http/https URL to a public hostname.
+    Blocks: IPv4 private/loopback, IPv6 loopback, decimal/hex IP tricks, AWS metadata.
+    """
+    if not url or not url.startswith(("http://", "https://")):
+        return False
+    lower = url.lower()
+    # IPv4 private + loopback + AWS metadata endpoint
+    blocked_substrings = (
+        "localhost",
+        "127.",
+        "10.",
+        "192.168.",
+        "172.16.",
+        "172.17.",
+        "172.18.",
+        "172.19.",
+        "172.20.",
+        "172.21.",
+        "172.22.",
+        "172.23.",
+        "172.24.",
+        "172.25.",
+        "172.26.",
+        "172.27.",
+        "172.28.",
+        "172.29.",
+        "172.30.",
+        "172.31.",
+        "169.254.",  # link-local / AWS metadata
+        "0.0.0.0",
+    )
+    if any(b in lower for b in blocked_substrings):
+        return False
+    # IPv6 loopback and link-local
+    blocked_ipv6 = ("::1", "[::1]", "::ffff:", "fe80:", "[fe80:")
+    if any(b in lower for b in blocked_ipv6):
+        return False
+    # Block decimal/octal/hex IP notation (e.g. http://0x7f000001, http://2130706433)
+    import re as _re
+
+    if _re.search(r"https?://0x[0-9a-f]+", lower):
+        return False
+    if _re.search(r"https?://\d{7,10}[/:$]", lower):  # decimal IP like 2130706433
+        return False
+    return True
+
+
 def firecrawl_email(url: str) -> str:
     """Use Firecrawl CLI to scrape website — handles JS-rendered sites and anti-bot."""
-    if not url or "yelp.com" in url or not FIRECRAWL_KEY:
+    if not url or "yelp.com" in url or not FIRECRAWL_KEY or not _safe_url(url):
         return ""
     try:
         env = os.environ.copy()
@@ -97,7 +145,7 @@ def firecrawl_email(url: str) -> str:
 
 def scrape_website_email(url: str) -> str:
     """Fallback scraper using httpx + BeautifulSoup (basic sites only)."""
-    if not url or "yelp.com" in url:
+    if not url or "yelp.com" in url or not _safe_url(url):
         return ""
     try:
         headers = {"User-Agent": "Mozilla/5.0 (compatible; DataEngine/1.0)"}
