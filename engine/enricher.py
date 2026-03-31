@@ -13,11 +13,13 @@ Cross-reference: uses Google Places API to find official website
 when only a Yelp URL is available.
 """
 
+import ipaddress
 import os
 import re
 import time
 import subprocess
 import socket
+import urllib.parse
 import httpx
 import dns.resolver
 from bs4 import BeautifulSoup
@@ -101,12 +103,31 @@ def _safe_url(url: str) -> bool:
     if any(b in lower for b in blocked_ipv6):
         return False
     # Block decimal/octal/hex IP notation (e.g. http://0x7f000001, http://2130706433)
-    import re as _re
+    if re.search(r"https?://0x[0-9a-f]+", lower):
+        return False
+    if re.search(r"https?://\d{7,10}[/:$]", lower):  # decimal IP like 2130706433
+        return False
 
-    if _re.search(r"https?://0x[0-9a-f]+", lower):
+    # DNS rebinding protection: resolve hostname now and validate the real IP.
+    # A malicious domain can pass all string checks above, then resolve to 127.0.0.1
+    # at request time. Resolving here and rejecting private/loopback IPs closes that gap.
+    try:
+        hostname = urllib.parse.urlparse(url).hostname
+        if not hostname:
+            return False
+        for info in socket.getaddrinfo(hostname, None):
+            addr = ipaddress.ip_address(info[4][0])
+            if (
+                addr.is_private
+                or addr.is_loopback
+                or addr.is_link_local
+                or addr.is_reserved
+            ):
+                return False
+    except (socket.gaierror, OSError, ValueError):
+        # Unresolvable hostname — fail safe
         return False
-    if _re.search(r"https?://\d{7,10}[/:$]", lower):  # decimal IP like 2130706433
-        return False
+
     return True
 
 
