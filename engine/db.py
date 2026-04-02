@@ -53,8 +53,39 @@ def init_db():
     conn.close()
 
 
+_VALID_COLUMNS = frozenset(
+    {
+        "source",
+        "biz_name",
+        "owner_name",
+        "biz_type",
+        "address",
+        "city",
+        "state",
+        "zip",
+        "phone",
+        "website",
+        "email",
+        "email_source",
+        "email_verified",
+        "filing_date",
+        "yelp_rating",
+        "yelp_category",
+        "enriched",
+        "outreach_sent",
+        "appforge_url",
+    }
+)
+
+
+def _safe_data(data: dict) -> dict:
+    """Strip any keys not in the schema allowlist before building dynamic SQL."""
+    return {k: v for k, v in data.items() if k in _VALID_COLUMNS}
+
+
 def upsert_lead(data: dict) -> int:
     """Insert lead or skip if biz_name + state already exists. Returns row id."""
+    data = _safe_data(data)
     conn = get_conn()
     existing = conn.execute(
         "SELECT id FROM leads WHERE biz_name = ? AND state = ?",
@@ -76,11 +107,14 @@ def upsert_lead(data: dict) -> int:
 
 
 def update_lead(lead_id: int, data: dict):
-    data["updated_at"] = "datetime('now')"
+    data = _safe_data(data)
+    if not data:
+        return
     sets = ", ".join(f"{k} = ?" for k in data.keys())
     conn = get_conn()
     conn.execute(
-        f"UPDATE leads SET {sets} WHERE id = ?", list(data.values()) + [lead_id]
+        f"UPDATE leads SET {sets}, updated_at = datetime('now') WHERE id = ?",
+        list(data.values()) + [lead_id],
     )
     conn.commit()
     conn.close()

@@ -71,33 +71,29 @@ def _safe_url(url: str) -> bool:
     if not url or not url.startswith(("http://", "https://")):
         return False
     lower = url.lower()
-    # IPv4 private + loopback + AWS metadata endpoint
-    blocked_substrings = (
-        "localhost",
-        "127.",
-        "10.",
-        "192.168.",
-        "172.16.",
-        "172.17.",
-        "172.18.",
-        "172.19.",
-        "172.20.",
-        "172.21.",
-        "172.22.",
-        "172.23.",
-        "172.24.",
-        "172.25.",
-        "172.26.",
-        "172.27.",
-        "172.28.",
-        "172.29.",
-        "172.30.",
-        "172.31.",
-        "169.254.",  # link-local / AWS metadata
-        "0.0.0.0",
-    )
-    if any(b in lower for b in blocked_substrings):
-        return False
+    # Block private IPv4 ranges using proper ipaddress module
+    # 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, 169.254.0.0/16
+    private_ranges = [
+        ipaddress.ip_network("10.0.0.0/8", strict=False),
+        ipaddress.ip_network("172.16.0.0/12", strict=False),
+        ipaddress.ip_network("192.168.0.0/16", strict=False),
+        ipaddress.ip_network("127.0.0.0/8", strict=False),
+        ipaddress.ip_network("169.254.0.0/16", strict=False),
+    ]
+    # Extract host from URL and check if it's a private IP
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.hostname:
+            try:
+                host_ip = ipaddress.ip_address(parsed.hostname)
+                for network in private_ranges:
+                    if host_ip in network:
+                        return False
+            except ValueError:
+                # Not an IP address - could be domain, continue with DNS check
+                pass
+    except Exception:
+        pass
     # IPv6 loopback and link-local
     blocked_ipv6 = ("::1", "[::1]", "::ffff:", "fe80:", "[fe80:")
     if any(b in lower for b in blocked_ipv6):
