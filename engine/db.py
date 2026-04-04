@@ -38,6 +38,8 @@ def init_db():
             yelp_category TEXT,
             enriched    INTEGER DEFAULT 0,       -- 1 = enrichment attempted
             outreach_sent INTEGER DEFAULT 0,
+            campaign_week TEXT,                  -- e.g. '2026-W14'
+            outreach_status TEXT DEFAULT 'pending', -- pending, contacted, interested, no_reply
             appforge_url TEXT,                   -- generated demo URL
             created_at  TEXT DEFAULT (datetime('now')),
             updated_at  TEXT DEFAULT (datetime('now'))
@@ -73,6 +75,8 @@ _VALID_COLUMNS = frozenset(
         "yelp_category",
         "enriched",
         "outreach_sent",
+        "campaign_week",
+        "outreach_status",
         "appforge_url",
     }
 )
@@ -164,7 +168,7 @@ def get_stats():
     }
 
 
-def get_all_leads(state=None, with_email_only=False, limit=500):
+def get_all_leads(state=None, with_email_only=False, campaign_only=False, limit=5000):
     conn = get_conn()
     query = "SELECT * FROM leads WHERE 1=1"
     params = []
@@ -172,7 +176,9 @@ def get_all_leads(state=None, with_email_only=False, limit=500):
         query += " AND state = ?"
         params.append(state.upper())
     if with_email_only:
-        query += " AND email IS NOT NULL"
+        query += " AND email IS NOT NULL AND email != ''"
+    if campaign_only:
+        query += " AND campaign_week IS NOT NULL"
     query += " ORDER BY created_at DESC LIMIT ?"
     params.append(limit)
     rows = conn.execute(query, params).fetchall()

@@ -24,6 +24,7 @@ from engine.db import (
     update_lead,
     get_stats,
     get_all_leads,
+    get_conn,
 )
 from engine.fetcher import fetch_all
 from engine.enricher import enrich_lead
@@ -175,6 +176,44 @@ def stats():
         for row in s["by_source"]:
             console.print(f"  {(row['email_source'] or 'none'):12} {row['n']}")
     console.print()
+
+
+@cli.command()
+@click.option("--limit", default=100, help="Number of leads to curate for this week")
+def curate(limit):
+    """Select the best 100 leads (both email and phone) for current week."""
+    from datetime import datetime
+    week_str = datetime.now().strftime("%Y-W%W")
+    
+    conn = get_conn()
+    existing = conn.execute("SELECT id FROM leads WHERE campaign_week = ?", (week_str,)).fetchall()
+    if len(existing) >= limit:
+        console.print(f"[yellow]Week {week_str} already has {len(existing)} leads curated.[/yellow]")
+        conn.close()
+        return
+
+    to_add = limit - len(existing)
+    leads = conn.execute("""
+        SELECT id, biz_name FROM leads 
+        WHERE email IS NOT NULL AND email != '' 
+        AND phone IS NOT NULL AND phone != '' 
+        AND campaign_week IS NULL
+        ORDER BY enriched DESC, filing_date DESC, id ASC
+        LIMIT ?
+    """, (to_add,)).fetchall()
+
+    if not leads:
+        console.print("[red]No suitable leads found with both email and phone.[/red]")
+        conn.close()
+        return
+
+    for l in leads:
+        conn.execute("UPDATE leads SET campaign_week = ? WHERE id = ?", (week_str, l['id']))
+    
+    conn.commit()
+    conn.close()
+    
+    console.print(f"[green]Successfully curated {len(leads)} leads for week {week_str}.[/green]")
 
 
 @cli.command()

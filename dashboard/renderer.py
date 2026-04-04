@@ -28,6 +28,8 @@ def _row_data(l: dict) -> dict:
         "filing_date": l.get("filing_date", "") or "",
         "appforge_url": l.get("appforge_url", "") or "",
         "outreach_sent": int(l.get("outreach_sent", 0) or 0),
+        "campaign_week": l.get("campaign_week", "") or "",
+        "outreach_status": l.get("outreach_status", "pending"),
         "enriched": int(l.get("enriched", 0) or 0),
         "website": l.get("website", "") or "",
     }
@@ -187,6 +189,7 @@ TEMPLATE = Template(r"""<!DOCTYPE html>
         <button onclick="setFilter('outreach')"     class="pill px-3 py-1 rounded-full text-xs font-medium bg-slate-700 text-slate-300 hover:bg-slate-600">Outreach Sent</button>
         <button onclick="setFilter('empty')"        class="pill px-3 py-1 rounded-full text-xs font-medium bg-slate-700 text-slate-300 hover:bg-slate-600">No Contact</button>
         <button onclick="setFilter('ready')"         class="pill px-3 py-1 rounded-full text-xs font-medium bg-emerald-800 text-emerald-200 hover:bg-emerald-700">&#9889; Ready to Send</button>
+        <button onclick="setFilter('weekly')"        class="pill px-3 py-1 rounded-full text-xs font-medium bg-sky-800 text-sky-100 hover:bg-sky-700">🎯 This Week's 100</button>
         <button onclick="setFilter('marked_sent')"  class="pill px-3 py-1 rounded-full text-xs font-medium bg-slate-700 text-slate-300 hover:bg-slate-600">Marked Sent (local)</button>
         <span id="marked-count-badge" class="px-2 py-1 rounded-full text-xs font-medium bg-violet-900 text-violet-300 hidden"></span>
       </div>
@@ -502,6 +505,7 @@ function matchesFilter(l) {
   if (activeFilter === 'outreach')    return l.outreach_sent === 1;
   if (activeFilter === 'empty')       return !l.email && !l.phone;
   if (activeFilter === 'ready')       return !!l.email && !!l.appforge_url && !l.outreach_sent && !getOutreachStatus(l.id);
+  if (activeFilter === 'weekly')      return !!l.campaign_week;
   if (activeFilter === 'marked_sent') return getOutreachStatus(l.id);
   return true;
 }
